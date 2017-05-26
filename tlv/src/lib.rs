@@ -184,7 +184,7 @@ impl<'a> Reader<'a> {
     pub fn read_atlv16<'addr, 'b>(&mut self, abuf: &'addr mut [u8], buf: &'b mut [u8]) -> Result<Option<(&'addr [u8], u32, &'b [u8])>, Error> {
         if let Some(amsg) = self.read_lv16(abuf)? {
             if let Some(tag) = self.read_tag()? {
-                if let Some(msg) = self.read_lv8(buf)? {
+                if let Some(msg) = self.read_lv16(buf)? {
                     return Ok(Some((amsg, tag, msg)))
                 } else {
                     return Ok(None)
@@ -200,7 +200,7 @@ impl<'a> Reader<'a> {
     pub fn read_atlv32<'addr, 'b>(&mut self, abuf: &'addr mut [u8], buf: &'b mut [u8]) -> Result<Option<(&'addr [u8], u32, &'b [u8])>, Error> {
         if let Some(amsg) = self.read_lv32(abuf)? {
             if let Some(tag) = self.read_tag()? {
-                if let Some(msg) = self.read_lv8(buf)? {
+                if let Some(msg) = self.read_lv32(buf)? {
                     return Ok(Some((amsg, tag, msg)))
                 } else {
                     return Ok(None)
@@ -312,11 +312,11 @@ impl<'a> Writer<'a> {
         Ok(self.write_lv8(addr)? + self.write_tag(tag)? + self.write_lv8(value)?)
     }
 
-    pub fn write_alv16(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
+    pub fn write_atlv16(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
         Ok(self.write_lv16(addr)? + self.write_tag(tag)? + self.write_lv16(value)?)
     }
 
-    pub fn write_alv32(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
+    pub fn write_atlv32(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
         Ok(self.write_lv32(addr)? + self.write_tag(tag)? + self.write_lv32(value)?)
     }    
 }
@@ -440,5 +440,94 @@ mod tests {
         assert_eq!(msg, &v2[..]);
     }
         
-    
+    #[test]
+    fn test_atlv8_seq() {
+        let (a1, t1, v1) = (b"addr1", 0x01, b"Hello, World");
+        let (a2, t2, v2) = (b"addr2", 0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_atlv8(a1, t1, v1).unwrap();
+        let l1 = 1 + a1.len() + 1 + 1 + v1.len();
+        assert_eq!(w.pos(), l1);
+        let l2 = 1 + a2.len() + 1 + 1 + v2.len();
+        w.write_atlv8(a2, t2, v2).unwrap();
+        assert_eq!(w.pos(), l1 + l2);
+
+        let mut r = Reader::new(w.as_ref());
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv8(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a1[..]);
+        assert_eq!(tag, t1);        
+        assert_eq!(msg, &v1[..]);
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv8(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a2[..]);
+        assert_eq!(tag, t2);        
+        assert_eq!(msg, &v2[..]);
+    }    
+
+    #[test]
+    fn test_atlv16_seq() {
+        let (a1, t1, v1) = (b"addr1", 0x01, b"Hello, World");
+        let (a2, t2, v2) = (b"addr2", 0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_atlv16(a1, t1, v1).unwrap();
+        let l1 = 2 + a1.len() + 1 + 2 + v1.len();
+        assert_eq!(w.pos(), l1);
+        let l2 = 2 + a2.len() + 1 + 2 + v2.len();
+        w.write_atlv16(a2, t2, v2).unwrap();
+        assert_eq!(w.pos(), l1 + l2);
+
+        let mut r = Reader::new(w.as_ref());
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv16(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a1[..]);
+        assert_eq!(tag, t1);        
+        assert_eq!(msg, &v1[..]);
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv16(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a2[..]);
+        assert_eq!(tag, t2);        
+        assert_eq!(msg, &v2[..]);
+    }    
+
+    #[test]
+    fn test_atlv32_seq() {
+        let (a1, t1, v1) = (b"addr1", 0x01, b"Hello, World");
+        let (a2, t2, v2) = (b"addr2", 0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_atlv32(a1, t1, v1).unwrap();
+        let l1 = 4 + a1.len() + 1 + 4 + v1.len();
+        assert_eq!(w.pos(), l1);
+        let l2 = 4 + a2.len() + 1 + 4 + v2.len();
+        w.write_atlv32(a2, t2, v2).unwrap();
+        assert_eq!(w.pos(), l1 + l2);
+
+        let mut r = Reader::new(w.as_ref());
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv32(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a1[..]);
+        assert_eq!(tag, t1);        
+        assert_eq!(msg, &v1[..]);
+
+        let mut aout = [0u8; 256];
+        let mut out = [0u8; 256];
+        let (addr, tag, msg) = r.read_atlv32(&mut aout, &mut out).unwrap().unwrap();
+        assert_eq!(addr, &a2[..]);
+        assert_eq!(tag, t2);        
+        assert_eq!(msg, &v2[..]);
+    }    
+
 }
