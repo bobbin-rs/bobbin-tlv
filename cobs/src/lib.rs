@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 //! Consistent Overhead Byte Stuffing
 //! Original Paper: http://www.stuartcheshire.org/papers/COBSforToN.pdf
@@ -88,14 +88,14 @@ pub fn decode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
     }    
 }
 
-pub struct Encoder<'a> {
+pub struct Writer<'a> {
     buf: &'a mut [u8],
     pos: usize,
 }
 
-impl<'a> Encoder<'a> {
+impl<'a> Writer<'a> {
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Encoder { buf: buf, pos: 0 }
+        Writer { buf: buf, pos: 0 }
     }
 
     pub fn pos(&self) -> usize {
@@ -126,14 +126,14 @@ impl<'a> Encoder<'a> {
     }
 }
 
-pub struct Decoder<'a> {
+pub struct Reader<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
-impl<'a> Decoder<'a> {
+impl<'a> Reader<'a> {
     pub fn new(buf: &'a [u8]) -> Self {
-        Decoder { buf: buf, pos: 0 }
+        Reader { buf: buf, pos: 0 }
     }
 
     pub fn pos(&self) -> usize {
@@ -288,19 +288,19 @@ mod tests {
     #[test]
     fn test_encoder_len() {
         let mut enc_buf = [0u8; 0];        
-        let mut encoder = Encoder::new(&mut enc_buf);        
+        let mut encoder = Writer::new(&mut enc_buf);        
         assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 1];
-        let mut encoder = Encoder::new(&mut enc_buf);        
+        let mut encoder = Writer::new(&mut enc_buf);        
         assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 2];
-        let mut encoder = Encoder::new(&mut enc_buf);        
+        let mut encoder = Writer::new(&mut enc_buf);        
         assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 3];
-        let mut encoder = Encoder::new(&mut enc_buf);        
+        let mut encoder = Writer::new(&mut enc_buf);        
         assert_eq!(encoder.write(&U1[..]), Ok(3));
         assert_eq!(encoder.remaining(), 0);
     }
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn test_encoder_decoder() {
         let mut enc_buf = [0xffu8; 256];        
-        let mut encoder = Encoder::new(&mut enc_buf);
+        let mut encoder = Writer::new(&mut enc_buf);
 
         assert_eq!(encoder.write(&U1[..]), Ok(3));
         assert_eq!(&encoder.as_ref()[..2], &E1[..]);
@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(encoder.as_ref()[26], 0);
         assert_eq!(encoder.pos(), 27);
 
-        let mut decoder = Decoder::new(encoder.as_ref());
+        let mut decoder = Reader::new(encoder.as_ref());
 
         let mut dst = [0xffu8; 255];        
         assert_eq!(decoder.read(&mut dst[..1]), Ok(1));
