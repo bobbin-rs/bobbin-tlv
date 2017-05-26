@@ -90,15 +90,49 @@ impl<'a> Reader<'a> {
         Ok(Some(len))
     }
 
+    fn read_lv8<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+        if let Some(len) = self.read_u8()? {
+            let len = len as usize;
+            if let Some(n) = self.read(&mut buf[..len])? {
+                return Ok(Some(&buf[..n]))
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }
+    }
+
+    fn read_lv16<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+        if let Some(len) = self.read_u16()? {
+            let len = len as usize;
+            if let Some(n) = self.read(&mut buf[..len])? {
+                return Ok(Some(&buf[..n]))
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }
+    }
+
+    fn read_lv32<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+        if let Some(len) = self.read_u32()? {
+            let len = len as usize;
+            if let Some(n) = self.read(&mut buf[..len])? {
+                return Ok(Some(&buf[..n]))
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }
+    }    
+
     pub fn read_tlv8<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
         if let Some(tag) = self.read_tag()? {
-            if let Some(len) = self.read_u8()? {
-                let len = len as usize;
-                if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, &buf[..n])))
-                } else {
-                    return Ok(None)
-                }
+            if let Some(msg) = self.read_lv8(buf)? {
+                return Ok(Some((tag, msg)))
             } else {
                 return Ok(None)
             }
@@ -108,28 +142,34 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read_tlv16<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
-        if let Some(tag) = self.read_tag()? {
-            if let Some(len) = self.read_u16()? {
-                let len = len as usize;
-                if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, &buf[..n])))
-                } else {
-                    return Ok(None)
-                }
+       if let Some(tag) = self.read_tag()? {
+            if let Some(msg) = self.read_lv16(buf)? {
+                return Ok(Some((tag, msg)))
             } else {
                 return Ok(None)
             }
         } else {
             return Ok(None)
-        }        
+        }           
     }    
 
     pub fn read_tlv32<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
-        if let Some(tag) = self.read_tag()? {
-            if let Some(len) = self.read_u32()? {
-                let len = len as usize;
-                if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, &buf[..n])))
+       if let Some(tag) = self.read_tag()? {
+            if let Some(msg) = self.read_lv32(buf)? {
+                return Ok(Some((tag, msg)))
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }       
+    }    
+
+    pub fn read_atlv8<'addr, 'b>(&mut self, abuf: &'addr mut [u8], buf: &'b mut [u8]) -> Result<Option<(&'addr [u8], u32, &'b [u8])>, Error> {
+        if let Some(amsg) = self.read_lv8(abuf)? {
+            if let Some(tag) = self.read_tag()? {
+                if let Some(msg) = self.read_lv8(buf)? {
+                    return Ok(Some((amsg, tag, msg)))
                 } else {
                     return Ok(None)
                 }
@@ -139,8 +179,39 @@ impl<'a> Reader<'a> {
         } else {
             return Ok(None)
         }        
-    }    
+    }  
 
+    pub fn read_atlv16<'addr, 'b>(&mut self, abuf: &'addr mut [u8], buf: &'b mut [u8]) -> Result<Option<(&'addr [u8], u32, &'b [u8])>, Error> {
+        if let Some(amsg) = self.read_lv16(abuf)? {
+            if let Some(tag) = self.read_tag()? {
+                if let Some(msg) = self.read_lv8(buf)? {
+                    return Ok(Some((amsg, tag, msg)))
+                } else {
+                    return Ok(None)
+                }
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }        
+    }          
+
+    pub fn read_atlv32<'addr, 'b>(&mut self, abuf: &'addr mut [u8], buf: &'b mut [u8]) -> Result<Option<(&'addr [u8], u32, &'b [u8])>, Error> {
+        if let Some(amsg) = self.read_lv32(abuf)? {
+            if let Some(tag) = self.read_tag()? {
+                if let Some(msg) = self.read_lv8(buf)? {
+                    return Ok(Some((amsg, tag, msg)))
+                } else {
+                    return Ok(None)
+                }
+            } else {
+                return Ok(None)
+            }
+        } else {
+            return Ok(None)
+        }        
+    }              
 }
 
 impl<'a> Writer<'a> {
@@ -166,7 +237,7 @@ impl<'a> Writer<'a> {
 
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.buf[self.pos..]
-    }
+    }    
 
     fn write_tag(&mut self, tag: u32) -> Result<usize, Error> {
         let len = {
@@ -207,45 +278,46 @@ impl<'a> Writer<'a> {
         Ok(len)
     }
 
-    pub fn write_tlv8(&mut self, tag: u32, value: &[u8]) -> Result<usize, Error> {
+    fn write_lv8(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
         if len >> 8 != 0 { return Err(Error::OutOfRange) }        
-        Ok(self.write_tag(tag)? + self.write_u8(len as u8)? + self.write(value)?)
+        Ok(self.write_u8(len as u8)? + self.write(value)?)
+    }
+
+    fn write_lv16(&mut self, value: &[u8]) -> Result<usize, Error> {
+        let len = value.len();
+        if len >> 16 != 0 { return Err(Error::OutOfRange) }        
+        Ok(self.write_u16(len as u16)? + self.write(value)?)
+    }    
+
+    fn write_lv32(&mut self, value: &[u8]) -> Result<usize, Error> {
+        let len = value.len();
+        if len >> 32 != 0 { return Err(Error::OutOfRange) }        
+        Ok(self.write_u32(len as u32)? + self.write(value)?)
+    }   
+
+    pub fn write_tlv8(&mut self, tag: u32, value: &[u8]) -> Result<usize, Error> {
+        Ok(self.write_tag(tag)? + self.write_lv8(value)?)
     }
 
     pub fn write_tlv16(&mut self, tag: u32, value: &[u8]) -> Result<usize, Error> {
-        let len = value.len();
-        if len >> 16 != 0 { return Err(Error::OutOfRange) }        
-        Ok(self.write_tag(tag)? + self.write_u16(len as u16)? + self.write(value)?)
+        Ok(self.write_tag(tag)? + self.write_lv16(value)?)
     }
 
     pub fn write_tlv32(&mut self, tag: u32, value: &[u8]) -> Result<usize, Error> {
-        let len = value.len();
-        if len >> 32 != 0 { return Err(Error::OutOfRange) }
-        Ok(self.write_tag(tag)? + self.write_u32(len as u32)? + self.write(value)?)
+        Ok(self.write_tag(tag)? + self.write_lv32(value)?)
     }
 
     pub fn write_atlv8(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
-        let alen = addr.len();
-        if alen >> 8 != 0 { return Err(Error::OutOfRange) }        
-        let len = value.len();
-        if len >> 8 != 0 { return Err(Error::OutOfRange) }        
-        Ok(self.write_u8(alen as u8)? + self.write(addr)? + self.write_tag(tag)? + self.write_u8(len as u8)? + self.write(value)?)
+        Ok(self.write_lv8(addr)? + self.write_tag(tag)? + self.write_lv8(value)?)
     }
 
     pub fn write_alv16(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
-        let alen = addr.len();
-        if alen >> 16 != 0 { return Err(Error::OutOfRange) }        
-        let len = value.len();
-        if len >> 16 != 0 { return Err(Error::OutOfRange) }        
-        Ok(self.write_u16(alen as u16)? + self.write(addr)? + self.write_tag(tag)? + self.write_u16(len as u16)? + self.write(value)?)
+        Ok(self.write_lv16(addr)? + self.write_tag(tag)? + self.write_lv16(value)?)
     }
 
     pub fn write_alv32(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
-        let alen = addr.len();
-        let len = value.len();
-        if len >> 32 != 0 { return Err(Error::OutOfRange) }
-        Ok(self.write_u32(alen as u32)? + self.write(addr)? + self.write_tag(tag)? + self.write_u32(len as u32)? + self.write(value)?)
+        Ok(self.write_lv32(addr)? + self.write_tag(tag)? + self.write_lv32(value)?)
     }    
 }
 
