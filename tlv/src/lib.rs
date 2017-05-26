@@ -48,7 +48,7 @@ impl<'a> Reader<'a> {
         &self.buf[self.pos..]
     }
 
-    fn read_tag(&mut self) -> Result<Option<u32>, Error> {
+    pub fn read_tag(&mut self) -> Result<Option<u32>, Error> {
         let (value, len) = {
             let mut r = leb128::Reader::new(self.as_ref());
             if let Some(value) = r.read_u32()? {
@@ -61,28 +61,28 @@ impl<'a> Reader<'a> {
         Ok(Some(value))
     }
 
-    fn read_u8(&mut self) -> Result<Option<u8>, Error> {
+    pub fn read_u8(&mut self) -> Result<Option<u8>, Error> {
         if self.remaining() < 1 { return Ok(None) }
         let value = self.buf[self.pos];
         self.pos += 1;
         Ok(Some(value))
     }
 
-    fn read_u16(&mut self) -> Result<Option<u16>, Error> {
+    pub fn read_u16(&mut self) -> Result<Option<u16>, Error> {
         if self.remaining() < 2 { return Ok(None) } 
         let value = BigEndian::read_u16(self.as_ref());
         self.pos += 2;        
         Ok(Some(value))
     }
 
-    fn read_u32(&mut self) -> Result<Option<u32>, Error> {
+    pub fn read_u32(&mut self) -> Result<Option<u32>, Error> {
         if self.remaining() < 4 { return Ok(None) }
         let value = BigEndian::read_u32(self.as_ref());
         self.pos += 4;
         Ok(Some(value))
     }
 
-    fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
         let len = buf.len();
         if len > self.remaining() { return Ok(None) }
         buf.copy_from_slice(&self.buf[self.pos..(self.pos + len)]);
@@ -90,7 +90,7 @@ impl<'a> Reader<'a> {
         Ok(Some(len))
     }
 
-    fn read_lv8<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+    pub fn read_lv8<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
         if let Some(len) = self.read_u8()? {
             let len = len as usize;
             if let Some(n) = self.read(&mut buf[..len])? {
@@ -103,7 +103,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn read_lv16<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+    pub fn read_lv16<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
         if let Some(len) = self.read_u16()? {
             let len = len as usize;
             if let Some(n) = self.read(&mut buf[..len])? {
@@ -116,7 +116,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn read_lv32<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
+    pub fn read_lv32<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<&'b [u8]>, Error> {
         if let Some(len) = self.read_u32()? {
             let len = len as usize;
             if let Some(n) = self.read(&mut buf[..len])? {
@@ -239,7 +239,7 @@ impl<'a> Writer<'a> {
         &mut self.buf[self.pos..]
     }    
 
-    fn write_tag(&mut self, tag: u32) -> Result<usize, Error> {
+    pub fn write_tag(&mut self, tag: u32) -> Result<usize, Error> {
         let len = {
             let mut w = leb128::Writer::new(self.as_mut());
             w.write_u32(tag)?;
@@ -249,28 +249,28 @@ impl<'a> Writer<'a> {
         Ok(len)
     }
 
-    fn write_u8(&mut self, value: u8) -> Result<usize, Error> {
+    pub fn write_u8(&mut self, value: u8) -> Result<usize, Error> {
         if self.remaining() < 1 { return Err(Error::BufferTooShort) }
         self.buf[self.pos] = value;
         self.pos += 1;
         Ok(1)
     }
 
-    fn write_u16(&mut self, value: u16) -> Result<usize, Error> {
+    pub fn write_u16(&mut self, value: u16) -> Result<usize, Error> {
         if self.remaining() < 2 { return Err(Error::BufferTooShort) }
         BigEndian::write_u16(&mut self.buf[self.pos..], value);
         self.pos += 2;
         Ok(2)
     }
 
-    fn write_u32(&mut self, value: u32) -> Result<usize, Error> {
+    pub fn write_u32(&mut self, value: u32) -> Result<usize, Error> {
         if self.remaining() < 2 { return Err(Error::BufferTooShort) }
         BigEndian::write_u32(&mut self.buf[self.pos..], value);
         self.pos += 4;
         Ok(4)
     }
 
-    fn write(&mut self, value: &[u8]) -> Result<usize, Error> {
+    pub fn write(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
         if self.remaining() < len { return Err(Error::BufferTooShort) }
         &mut self.buf[self.pos..(self.pos + len)].copy_from_slice(value);
@@ -278,19 +278,19 @@ impl<'a> Writer<'a> {
         Ok(len)
     }
 
-    fn write_lv8(&mut self, value: &[u8]) -> Result<usize, Error> {
+    pub fn write_lv8(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
         if len >> 8 != 0 { return Err(Error::OutOfRange) }        
         Ok(self.write_u8(len as u8)? + self.write(value)?)
     }
 
-    fn write_lv16(&mut self, value: &[u8]) -> Result<usize, Error> {
+    pub fn write_lv16(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
         if len >> 16 != 0 { return Err(Error::OutOfRange) }        
         Ok(self.write_u16(len as u16)? + self.write(value)?)
     }    
 
-    fn write_lv32(&mut self, value: &[u8]) -> Result<usize, Error> {
+    pub fn write_lv32(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
         if len >> 32 != 0 { return Err(Error::OutOfRange) }        
         Ok(self.write_u32(len as u32)? + self.write(value)?)
