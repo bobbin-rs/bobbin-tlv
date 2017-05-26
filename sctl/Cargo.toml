@@ -1,0 +1,8 @@
+[package]
+name = "sctl"
+version = "0.1.0"
+authors = ["Jonathan Soo <jcsoo@agora.com>"]
+
+[dependencies]
+cobs = { path = "../cobs/" }
+tlv = { path = "../tlv/" }
