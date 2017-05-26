@@ -90,12 +90,12 @@ impl<'a> Reader<'a> {
         Ok(Some(len))
     }
 
-    pub fn read_tlv8(&mut self, buf: &mut [u8]) -> Result<Option<(u32, usize)>, Error> {
+    pub fn read_tlv8<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
         if let Some(tag) = self.read_tag()? {
             if let Some(len) = self.read_u8()? {
                 let len = len as usize;
                 if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, n)))
+                    return Ok(Some((tag, &buf[..n])))
                 } else {
                     return Ok(None)
                 }
@@ -107,12 +107,12 @@ impl<'a> Reader<'a> {
         }        
     }
 
-    pub fn read_tlv16(&mut self, buf: &mut [u8]) -> Result<Option<(u32, usize)>, Error> {
+    pub fn read_tlv16<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
         if let Some(tag) = self.read_tag()? {
             if let Some(len) = self.read_u16()? {
                 let len = len as usize;
                 if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, n)))
+                    return Ok(Some((tag, &buf[..n])))
                 } else {
                     return Ok(None)
                 }
@@ -124,12 +124,12 @@ impl<'a> Reader<'a> {
         }        
     }    
 
-    pub fn read_tlv32(&mut self, buf: &mut [u8]) -> Result<Option<(u32, usize)>, Error> {
+    pub fn read_tlv32<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<(u32, &'b [u8])>, Error> {
         if let Some(tag) = self.read_tag()? {
             if let Some(len) = self.read_u32()? {
                 let len = len as usize;
                 if let Some(n) = self.read(&mut buf[..len])? {
-                    return Ok(Some((tag, n)))
+                    return Ok(Some((tag, &buf[..n])))
                 } else {
                     return Ok(None)
                 }
@@ -224,6 +224,29 @@ impl<'a> Writer<'a> {
         if len >> 32 != 0 { return Err(Error::OutOfRange) }
         Ok(self.write_tag(tag)? + self.write_u32(len as u32)? + self.write(value)?)
     }
+
+    pub fn write_atlv8(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
+        let alen = addr.len();
+        if alen >> 8 != 0 { return Err(Error::OutOfRange) }        
+        let len = value.len();
+        if len >> 8 != 0 { return Err(Error::OutOfRange) }        
+        Ok(self.write_u8(alen as u8)? + self.write(addr)? + self.write_tag(tag)? + self.write_u8(len as u8)? + self.write(value)?)
+    }
+
+    pub fn write_alv16(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
+        let alen = addr.len();
+        if alen >> 16 != 0 { return Err(Error::OutOfRange) }        
+        let len = value.len();
+        if len >> 16 != 0 { return Err(Error::OutOfRange) }        
+        Ok(self.write_u16(alen as u16)? + self.write(addr)? + self.write_tag(tag)? + self.write_u16(len as u16)? + self.write(value)?)
+    }
+
+    pub fn write_alv32(&mut self, addr: &[u8], tag: u32, value: &[u8]) -> Result<usize, Error> {
+        let alen = addr.len();
+        let len = value.len();
+        if len >> 32 != 0 { return Err(Error::OutOfRange) }
+        Ok(self.write_u32(alen as u32)? + self.write(addr)? + self.write_tag(tag)? + self.write_u32(len as u32)? + self.write(value)?)
+    }    
 }
 
 
@@ -240,9 +263,9 @@ mod tests {
         assert_eq!(w.pos(), 2 + 1 + value.len());
         let mut r = Reader::new(w.as_ref());
         let mut out = [0u8; 256];
-        let (tag, len) = r.read_tlv8(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv8(&mut out).unwrap().unwrap();
         assert_eq!(tag, 0x1234);
-        assert_eq!(&out[..len], value);
+        assert_eq!(msg, value);
     }
 
     #[test]
@@ -254,9 +277,9 @@ mod tests {
         assert_eq!(w.pos(), 2 + 2 + value.len());
         let mut r = Reader::new(w.as_ref());
         let mut out = [0u8; 256];
-        let (tag, len) = r.read_tlv16(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv16(&mut out).unwrap().unwrap();
         assert_eq!(tag, 0x1234);
-        assert_eq!(&out[..len], value);
+        assert_eq!(msg, &value[..]);
     }
 
     #[test]
@@ -268,9 +291,9 @@ mod tests {
         assert_eq!(w.pos(), 2 + 4 + value.len());
         let mut r = Reader::new(w.as_ref());
         let mut out = [0u8; 256];
-        let (tag, len) = r.read_tlv32(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv32(&mut out).unwrap().unwrap();
         assert_eq!(tag, 0x1234);
-        assert_eq!(&out[..len], value);
+        assert_eq!(msg, &value[..]);
     }    
 
     #[test]
@@ -287,13 +310,14 @@ mod tests {
         let mut r = Reader::new(w.as_ref());
         let mut out = [0u8; 256];
 
-        let (tag, len) = r.read_tlv8(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv8(&mut out).unwrap().unwrap();
         assert_eq!(tag, t1);        
-        assert_eq!(&out[..len], v1);
+        assert_eq!(msg, &v1[..]);
 
-        let (tag, len) = r.read_tlv8(&mut out).unwrap().unwrap();
+        let mut out = [0u8; 256];
+        let (tag, msg) = r.read_tlv8(&mut out).unwrap().unwrap();
         assert_eq!(tag, t2);
-        assert_eq!(&out[..len], v2);
+        assert_eq!(msg, &v2[..]);
     }
 
     #[test]
@@ -308,15 +332,16 @@ mod tests {
         assert_eq!(w.pos(), 1 + 2 + v1.len() + 1 + 2 + v2.len());
 
         let mut r = Reader::new(w.as_ref());
+
         let mut out = [0u8; 256];
-
-        let (tag, len) = r.read_tlv16(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv16(&mut out).unwrap().unwrap();
         assert_eq!(tag, t1);        
-        assert_eq!(&out[..len], v1);
+        assert_eq!(msg, &v1[..]);
 
-        let (tag, len) = r.read_tlv16(&mut out).unwrap().unwrap();
+        let mut out = [0u8; 256];
+        let (tag, msg) = r.read_tlv16(&mut out).unwrap().unwrap();
         assert_eq!(tag, t2);
-        assert_eq!(&out[..len], v2);
+        assert_eq!(msg, &v2[..]);
     }
 
     #[test]
@@ -331,15 +356,16 @@ mod tests {
         assert_eq!(w.pos(), 1 + 4 + v1.len() + 1 + 4 + v2.len());
 
         let mut r = Reader::new(w.as_ref());
+
         let mut out = [0u8; 256];
-
-        let (tag, len) = r.read_tlv32(&mut out).unwrap().unwrap();
+        let (tag, msg) = r.read_tlv32(&mut out).unwrap().unwrap();
         assert_eq!(tag, t1);        
-        assert_eq!(&out[..len], v1);
+        assert_eq!(msg, &v1[..]);
 
-        let (tag, len) = r.read_tlv32(&mut out).unwrap().unwrap();
+        let mut out = [0u8; 256];
+        let (tag, msg) = r.read_tlv32(&mut out).unwrap().unwrap();
         assert_eq!(tag, t2);
-        assert_eq!(&out[..len], v2);
+        assert_eq!(msg, &v2[..]);
     }
         
     
