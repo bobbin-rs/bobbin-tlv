@@ -86,6 +86,7 @@ impl<'a> Reader<'a> {
         let len = buf.len();
         if len > self.remaining() { return Ok(None) }
         buf.copy_from_slice(&self.buf[self.pos..(self.pos + len)]);
+        self.pos += len;
         Ok(Some(len))
     }
 
@@ -271,4 +272,75 @@ mod tests {
         assert_eq!(tag, 0x1234);
         assert_eq!(&out[..len], value);
     }    
+
+    #[test]
+    fn test_tlv8_seq() {
+        let (t1, v1) = (0x01, b"Hello, World");
+        let (t2, v2) = (0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_tlv8(t1, v1).unwrap();
+        assert_eq!(w.pos(), 1 + 1 + v1.len());
+        w.write_tlv8(t2, v2).unwrap();
+        assert_eq!(w.pos(), 1 + 1 + v1.len() + 1 + 1 + v2.len());
+
+        let mut r = Reader::new(w.as_ref());
+        let mut out = [0u8; 256];
+
+        let (tag, len) = r.read_tlv8(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t1);        
+        assert_eq!(&out[..len], v1);
+
+        let (tag, len) = r.read_tlv8(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t2);
+        assert_eq!(&out[..len], v2);
+    }
+
+    #[test]
+    fn test_tlv16_seq() {
+        let (t1, v1) = (0x01, b"Hello, World");
+        let (t2, v2) = (0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_tlv16(t1, v1).unwrap();
+        assert_eq!(w.pos(), 1 + 2 + v1.len());
+        w.write_tlv16(t2, v2).unwrap();
+        assert_eq!(w.pos(), 1 + 2 + v1.len() + 1 + 2 + v2.len());
+
+        let mut r = Reader::new(w.as_ref());
+        let mut out = [0u8; 256];
+
+        let (tag, len) = r.read_tlv16(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t1);        
+        assert_eq!(&out[..len], v1);
+
+        let (tag, len) = r.read_tlv16(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t2);
+        assert_eq!(&out[..len], v2);
+    }
+
+    #[test]
+    fn test_tlv32_seq() {
+        let (t1, v1) = (0x01, b"Hello, World");
+        let (t2, v2) = (0x02, b"Hi, There");
+        let mut buf = [0u8; 256];
+        let mut w = Writer::new(&mut buf);
+        w.write_tlv32(t1, v1).unwrap();
+        assert_eq!(w.pos(), 1 + 4 + v1.len());
+        w.write_tlv32(t2, v2).unwrap();
+        assert_eq!(w.pos(), 1 + 4 + v1.len() + 1 + 4 + v2.len());
+
+        let mut r = Reader::new(w.as_ref());
+        let mut out = [0u8; 256];
+
+        let (tag, len) = r.read_tlv32(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t1);        
+        assert_eq!(&out[..len], v1);
+
+        let (tag, len) = r.read_tlv32(&mut out).unwrap().unwrap();
+        assert_eq!(tag, t2);
+        assert_eq!(&out[..len], v2);
+    }
+        
+    
 }
