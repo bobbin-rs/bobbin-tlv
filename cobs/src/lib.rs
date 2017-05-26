@@ -147,10 +147,6 @@ impl<'a> Reader<'a> {
     pub fn remaining(&self) -> usize {
         self.len() - self.pos()
     }
-
-    pub fn as_ref(&self) -> &[u8] {
-        &self.buf[self.pos..]
-    }    
     
     // Returns the number of bytes used in dst
     pub fn read(&mut self, dst: &mut [u8]) -> Result<usize, Error> {

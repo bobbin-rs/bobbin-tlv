@@ -1,0 +1,8 @@
+[package]
+name = "tlv"
+version = "0.1.0"
+authors = ["Jonathan Soo <jcsoo@agora.com>"]
+
+[dependencies]
+leb128 = { path = "../leb128/"}
+byteorder = { version = "1", default-features = false }
