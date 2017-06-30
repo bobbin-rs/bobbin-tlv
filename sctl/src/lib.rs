@@ -56,11 +56,10 @@ pub enum Message<'a> {
     Info(&'a [u8]),
     Debug(&'a [u8]),
     Trace(&'a [u8]),
-    Val(&'a [u8]),
+    Val(&'a [u8]),    
     Get(&'a [u8]),
     Set(&'a [u8]),
 }
-
 
 pub struct Reader<'a> {
     buf: &'a mut [u8],
@@ -103,9 +102,9 @@ impl<'a> Reader<'a> {
                 0x22 => Ok(Some(Message::Info(value))),
                 0x23 => Ok(Some(Message::Debug(value))),
                 0x24 => Ok(Some(Message::Trace(value))),
-                0x30 => Ok(Some(Message::Val(value))),                
+                0x30 => Ok(Some(Message::Val(value))),
                 0x31 => Ok(Some(Message::Get(value))),
-                0x32 => Ok(Some(Message::Get(value))),
+                0x32 => Ok(Some(Message::Set(value))),
                 _ => unimplemented!(),
             }
         } else {
@@ -187,22 +186,16 @@ impl<'a> Writer<'a> {
         self.write_tlv(Tag::Trace, value)
     }  
 
-    pub fn val(&mut self, tmp: &mut [u8], key: &[u8], value: &[u8]) -> Result<usize, Error> {
-        let mut w = tlv::Writer::new(tmp);
-        w.write_lv8(key)?;
-        w.write_lv8(value)?;
-        self.write_tlv(Tag::Val, w.as_ref())
+    pub fn val(&mut self, value: &[u8]) -> Result<usize, Error> {
+        self.write_tlv(Tag::Val, value)
     }  
 
-    pub fn get(&mut self, key: &[u8]) -> Result<usize, Error> {
-        self.write_tlv(Tag::Get, key)
+    pub fn get(&mut self, value: &[u8]) -> Result<usize, Error> {
+        self.write_tlv(Tag::Get, value)
     }  
 
-    pub fn set(&mut self, tmp: &mut[u8], key: &[u8], value: &[u8]) -> Result<usize, Error> {
-        let mut w = tlv::Writer::new(tmp);
-        w.write_lv8(key)?;
-        w.write_lv8(value)?;
-        self.write_tlv(Tag::Set, w.as_ref())
+    pub fn set(&mut self, value: &[u8]) -> Result<usize, Error> {
+        self.write_tlv(Tag::Set, value)
     }  
 
 }
@@ -213,16 +206,27 @@ mod tests {
 
     #[test]
     fn test_boot() {
-        let mut wbuf = [0u8; 256];
+        let mut wbuf = [0u8; 1024];
         let mut w = Writer::new(&mut wbuf);
 
-        let mut rbuf = [0u8; 256];
+        let mut rbuf = [0u8; 1024];
         let mut r = Reader::new(&mut rbuf);
 
         w.boot(b"Hello, World").unwrap();
         w.run(b"Testing").unwrap();
-        w.stdout(b"abcdef").unwrap();
-        w.exit(0x55).unwrap();;
+        w.exception(b"Exception").unwrap();
+        w.panic(b"Panic").unwrap();
+        w.stdin(b"stdin").unwrap();
+        w.stdout(b"stdout").unwrap();
+        w.stderr(b"stderr").unwrap();
+        w.warn(b"warn").unwrap();
+        w.info(b"info").unwrap();
+        w.debug(b"debug").unwrap();
+        w.trace(b"trace").unwrap();
+        w.val(b"val").unwrap();
+        w.get(b"get").unwrap();
+        w.set(b"set").unwrap();
+        w.exit(0x55).unwrap();
         { 
             let mut out = [0u8; 256];
             let dst = w.encode(&mut out).unwrap();
@@ -231,7 +235,18 @@ mod tests {
         let mut tmp = [0u8; 256];
         assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Boot(b"Hello, World"))));        
         assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Run(b"Testing"))));
-        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Stdout(b"abcdef"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Exception(b"Exception"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Panic(b"Panic"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Stdin(b"stdin"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Stdout(b"stdout"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Stderr(b"stderr"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Warn(b"warn"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Info(b"info"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Debug(b"debug"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Trace(b"trace"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Val(b"val"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Get(b"get"))));
+        assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Set(b"set"))));
         assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Exit(0x55))));
     }
 }
