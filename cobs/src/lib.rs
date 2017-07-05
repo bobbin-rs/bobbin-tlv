@@ -156,6 +156,13 @@ impl<'a> Reader<'a> {
     pub fn extend(&mut self, len: usize) {
         self.tail += len;
     }
+
+    pub fn compact(&mut self) {
+        if self.head == self.tail {
+            self.head = 0;
+            self.tail = 0;
+        }
+    }
     
     // Returns the number of bytes used in dst
     pub fn read(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
@@ -168,6 +175,10 @@ impl<'a> Reader<'a> {
             t += 1;
         }
         if t == self.tail {
+            return Ok(None)
+        }
+        if t == self.head {
+            self.head = t + 1;
             return Ok(None)
         }
         let n = decode(&self.buf[self.head..t], dst)?;

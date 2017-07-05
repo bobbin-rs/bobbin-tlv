@@ -3,6 +3,8 @@
 extern crate cobs;
 extern crate tlv;
 
+use core::convert::AsRef;
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     CobsError(cobs::Error),
@@ -23,11 +25,11 @@ impl From<tlv::Error> for Error {
 
 #[derive(Debug, PartialEq)]
 pub enum Tag {
-    Boot = 0x0,
-    Run = 0x1,
-    Exit = 0x2,
-    Exception = 0x3,
-    Panic = 0x4,    
+    Boot = 0x1,
+    Run = 0x2,
+    Exit = 0x3,
+    Exception = 0x4,
+    Panic = 0x5,
     Stdin = 0x10,
     Stdout = 0x11,
     Stderr = 0x12,
@@ -62,7 +64,7 @@ pub enum Message<'a> {
 }
 
 pub struct Reader<'a> {
-    buf: &'a mut [u8],
+    buf: &'a [u8],
     len: usize,
     pos: usize,
 }
@@ -73,27 +75,27 @@ pub struct Writer<'a> {
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(buf: &'a mut [u8]) -> Self {
+    pub fn new(buf: &'a [u8]) -> Self {
         Reader { buf: buf, len: 0, pos: 0 }
     }
 
-    pub fn decode(&mut self, src: &[u8]) -> Result<usize, Error> {
-        let mut w = cobs::Reader::new(src);
-        self.len = w.read(&mut self.buf)?;
-        self.pos = 0;
-        Ok(self.len)
-    }
+    // pub fn decode(&mut self, src: &[u8]) -> Result<usize, Error> {
+    //     let mut w = cobs::Reader::new(src);
+    //     self.len = w.read(&mut self.buf)?;
+    //     self.pos = 0;
+    //     Ok(self.len)
+    // }
 
     pub fn read<'b>(&mut self, buf: &'b mut [u8]) -> Result<Option<Message<'b>>, Error> {
         let mut r = tlv::Reader::new(&self.buf[self.pos..]);
         if let Some((tag, value)) = r.read_tlv8(buf)? {
             self.pos += r.pos();
             match tag {
-                0x0 => Ok(Some(Message::Boot(value))),
-                0x1 => Ok(Some(Message::Run(value))),
-                0x2 => Ok(Some(Message::Exit(value[0]))),
-                0x3 => Ok(Some(Message::Exception(value))),
-                0x4 => Ok(Some(Message::Panic(value))),
+                0x1 => Ok(Some(Message::Boot(value))),
+                0x2 => Ok(Some(Message::Run(value))),
+                0x3 => Ok(Some(Message::Exit(value[0]))),
+                0x4 => Ok(Some(Message::Exception(value))),
+                0x5 => Ok(Some(Message::Panic(value))),
                 0x10 => Ok(Some(Message::Stdin(value))),
                 0x11 => Ok(Some(Message::Stdout(value))),
                 0x12 => Ok(Some(Message::Stderr(value))),
@@ -110,6 +112,18 @@ impl<'a> Reader<'a> {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.len - self.pos
     }
 }
 
@@ -200,6 +214,12 @@ impl<'a> Writer<'a> {
 
 }
 
+impl<'a> AsRef<[u8]> for Writer<'a> {
+    fn as_ref(&self) -> &[u8] {
+        &self.buf[..self.pos]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,9 +228,6 @@ mod tests {
     fn test_boot() {
         let mut wbuf = [0u8; 1024];
         let mut w = Writer::new(&mut wbuf);
-
-        let mut rbuf = [0u8; 1024];
-        let mut r = Reader::new(&mut rbuf);
 
         w.boot(b"Hello, World").unwrap();
         w.run(b"Testing").unwrap();
@@ -227,11 +244,8 @@ mod tests {
         w.get(b"get").unwrap();
         w.set(b"set").unwrap();
         w.exit(0x55).unwrap();
-        { 
-            let mut out = [0u8; 256];
-            let dst = w.encode(&mut out).unwrap();
-            r.decode(dst).unwrap();
-        }
+
+        let mut r = Reader::new(w.as_ref());
         let mut tmp = [0u8; 256];
         assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Boot(b"Hello, World"))));        
         assert_eq!(r.read(&mut tmp[..]), Ok(Some(Message::Run(b"Testing"))));

@@ -292,7 +292,7 @@ impl<'a> Writer<'a> {
 
     pub fn write_lv32(&mut self, value: &[u8]) -> Result<usize, Error> {
         let len = value.len();
-        if len >> 32 != 0 { return Err(Error::OutOfRange) }        
+        //if len >> 32 != 0 { return Err(Error::OutOfRange) }        
         Ok(self.write_u32(len as u32)? + self.write(value)?)
     }   
 
