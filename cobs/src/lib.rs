@@ -127,43 +127,52 @@ impl<'a> Writer<'a> {
 }
 
 pub struct Reader<'a> {
-    buf: &'a [u8],
-    pos: usize,
+    buf: &'a mut [u8],
+    head: usize,
+    tail: usize,
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(buf: &'a [u8]) -> Self {
-        Reader { buf: buf, pos: 0 }
+    pub fn new(buf: &'a mut [u8]) -> Self {
+        Reader { buf: buf, head: 0, tail: 0 }
     }
 
     pub fn pos(&self) -> usize {
-        self.pos
+        self.head
     }
 
     pub fn len(&self) -> usize {
-        self.buf.len()
+        self.tail - self.head
     }
 
     pub fn remaining(&self) -> usize {
-        self.len() - self.pos()
+        self.buf.len() - self.tail
+    }
+
+    pub fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[self.tail..]
+    }
+
+    pub fn extend(&mut self, len: usize) {
+        self.tail += len;
     }
     
     // Returns the number of bytes used in dst
-    pub fn read(&mut self, dst: &mut [u8]) -> Result<usize, Error> {
+    pub fn read(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
         // find terminator
-        let mut t = self.pos;
-        while t < self.buf.len() {
+        let mut t = self.head;
+        while t < self.tail {
             if self.buf[t] == 0 {
                 break
             }
             t += 1;
         }
-        if t == self.buf.len() {
-            return Err(Error::MissingTerminator)
+        if t == self.tail {
+            return Ok(None)
         }
-        let n = decode(&self.buf[self.pos..t], dst)?;
-        self.pos = t + 1;
-        Ok(n)
+        let n = decode(&self.buf[self.head..t], dst)?;
+        self.head = t + 1;
+        Ok(Some(n))
     }
 }
 
@@ -331,41 +340,44 @@ mod tests {
         assert_eq!(encoder.as_ref()[26], 0);
         assert_eq!(encoder.pos(), 27);
 
-        let mut decoder = Reader::new(encoder.as_ref());
+        let mut dec_buf = [0u8; 1024];
+        let mut decoder = Reader::new(&mut dec_buf);
+        &mut decoder.as_mut()[..encoder.pos()].copy_from_slice(&encoder.as_ref());
+        decoder.extend(encoder.pos());
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..1]), Ok(1));
+        assert_eq!(decoder.read(&mut dst[..1]), Ok(Some(1)));
         assert_eq!(&dst[..1], &U1[..]);
         assert_eq!(decoder.pos(), 3);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..2]), Ok(2));
+        assert_eq!(decoder.read(&mut dst[..2]), Ok((Some(2))));
         assert_eq!(&dst[..2], &U2[..]);
         assert_eq!(decoder.pos(), 7);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(4));
+        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U3[..]);
         assert_eq!(decoder.pos(), 13);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(4));
+        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U4[..]);
         assert_eq!(decoder.pos(), 19);        
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(4));
+        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U5[..]);
         assert_eq!(decoder.pos(), 25);          
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..0]), Ok(0));
+        assert_eq!(decoder.read(&mut dst[..0]), Ok(Some(0)));
         assert_eq!(decoder.pos(), 27);
-        assert_eq!(decoder.remaining(), 0);
+        assert_eq!(decoder.len(), 0);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..0]), Err(Error::MissingTerminator));
+        assert_eq!(decoder.read(&mut dst[..0]), Ok(None));
         assert_eq!(decoder.pos(), 27);
-        assert_eq!(decoder.remaining(), 0);        
+        assert_eq!(decoder.len(), 0);        
     }
 }
