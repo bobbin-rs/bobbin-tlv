@@ -135,7 +135,7 @@ impl<'a> Writer<'a> {
     pub fn encode<'b>(&mut self, dst: &'b mut [u8]) -> Result<&'b [u8], Error> {
         let len = {
             let mut w = cobs::Writer::new(dst);
-            w.write(&self.buf[..self.pos])?
+            w.encode_packet(&self.buf[..self.pos])?
         };
         self.pos = 0;
         Ok(&dst[..len])

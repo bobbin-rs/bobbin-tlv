@@ -115,7 +115,7 @@ impl<'a> Writer<'a> {
     }
 
     // Returns the number of bytes used by the encoder, including the null termintor.
-    pub fn write(&mut self, src: &[u8]) -> Result<usize, Error> {
+    pub fn encode_packet(&mut self, src: &[u8]) -> Result<usize, Error> {
         let n = encode(src, &mut self.buf[self.pos..])?;
         if self.pos + n + 1 > self.buf.len() {
             return Err(Error::BufferTooShort)
@@ -165,7 +165,7 @@ impl<'a> Reader<'a> {
     }
     
     // Returns the number of bytes used in dst
-    pub fn read(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
+    pub fn decode_packet(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
         // find terminator
         let mut t = self.head;
         while t < self.tail {
@@ -179,7 +179,7 @@ impl<'a> Reader<'a> {
         }
         if t == self.head {
             self.head = t + 1;
-            return Ok(None)
+            return Ok(Some(0))
         }
         let n = decode(&self.buf[self.head..t], dst)?;
         self.head = t + 1;
@@ -305,19 +305,19 @@ mod tests {
     fn test_encoder_len() {
         let mut enc_buf = [0u8; 0];        
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 1];
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 2];
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.write(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
 
         let mut enc_buf = [0u8; 3];
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.write(&U1[..]), Ok(3));
+        assert_eq!(encoder.encode_packet(&U1[..]), Ok(3));
         assert_eq!(encoder.remaining(), 0);
     }
 
@@ -326,27 +326,27 @@ mod tests {
         let mut enc_buf = [0xffu8; 256];        
         let mut encoder = Writer::new(&mut enc_buf);
 
-        assert_eq!(encoder.write(&U1[..]), Ok(3));
+        assert_eq!(encoder.encode_packet(&U1[..]), Ok(3));
         assert_eq!(&encoder.as_ref()[..2], &E1[..]);
         assert_eq!(encoder.as_ref()[2], 0);
 
-        assert_eq!(encoder.write(&U2[..]), Ok(4));
+        assert_eq!(encoder.encode_packet(&U2[..]), Ok(4));
         assert_eq!(&encoder.as_ref()[3..6], &E2[..]);
         assert_eq!(encoder.as_ref()[6], 0);
 
-        assert_eq!(encoder.write(&U3[..]), Ok(6));
+        assert_eq!(encoder.encode_packet(&U3[..]), Ok(6));
         assert_eq!(&encoder.as_ref()[7..12], &E3[..]);
         assert_eq!(encoder.as_ref()[12], 0);
 
-        assert_eq!(encoder.write(&U4[..]), Ok(6));
+        assert_eq!(encoder.encode_packet(&U4[..]), Ok(6));
         assert_eq!(&encoder.as_ref()[13..18], &E4[..]);
         assert_eq!(encoder.as_ref()[18], 0);        
 
-        assert_eq!(encoder.write(&U5[..]), Ok(6));
+        assert_eq!(encoder.encode_packet(&U5[..]), Ok(6));
         assert_eq!(&encoder.as_ref()[19..24], &E5[..]);
         assert_eq!(encoder.as_ref()[24], 0);      
 
-        assert_eq!(encoder.write(b""), Ok(2));
+        assert_eq!(encoder.encode_packet(b""), Ok(2));
         assert_eq!(encoder.as_ref()[25], 1);
         assert_eq!(encoder.as_ref()[26], 0);
         assert_eq!(encoder.pos(), 27);
@@ -357,37 +357,37 @@ mod tests {
         decoder.extend(encoder.pos());
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..1]), Ok(Some(1)));
+        assert_eq!(decoder.decode_packet(&mut dst[..1]), Ok(Some(1)));
         assert_eq!(&dst[..1], &U1[..]);
         assert_eq!(decoder.pos(), 3);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..2]), Ok((Some(2))));
+        assert_eq!(decoder.decode_packet(&mut dst[..2]), Ok((Some(2))));
         assert_eq!(&dst[..2], &U2[..]);
         assert_eq!(decoder.pos(), 7);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
+        assert_eq!(decoder.decode_packet(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U3[..]);
         assert_eq!(decoder.pos(), 13);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
+        assert_eq!(decoder.decode_packet(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U4[..]);
         assert_eq!(decoder.pos(), 19);        
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..4]), Ok(Some(4)));
+        assert_eq!(decoder.decode_packet(&mut dst[..4]), Ok(Some(4)));
         assert_eq!(&dst[..4], &U5[..]);
         assert_eq!(decoder.pos(), 25);          
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..0]), Ok(Some(0)));
+        assert_eq!(decoder.decode_packet(&mut dst[..0]), Ok(Some(0)));
         assert_eq!(decoder.pos(), 27);
         assert_eq!(decoder.len(), 0);
 
         let mut dst = [0xffu8; 255];        
-        assert_eq!(decoder.read(&mut dst[..0]), Ok(None));
+        assert_eq!(decoder.decode_packet(&mut dst[..0]), Ok(None));
         assert_eq!(decoder.pos(), 27);
         assert_eq!(decoder.len(), 0);        
     }
