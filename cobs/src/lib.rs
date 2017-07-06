@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 
 //! Consistent Overhead Byte Stuffing
 //! Original Paper: http://www.stuartcheshire.org/papers/COBSforToN.pdf
@@ -9,8 +9,10 @@
 #[derive(Debug, PartialEq)]
 pub enum Error {
     InvalidEncoding,
-    BufferTooShort,
-    MissingTerminator,
+    // DestTooShort,
+    SourceTooShort,
+    DestTooShort,
+    UnexpectedNull,
 }
 
 /// Encodes a slice into dst, returning the number of dst bytes used. dst must be at least one byte longer than src.
@@ -24,7 +26,7 @@ pub fn encode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
     while p < slen {
         if src[p] == 0 {
             if cp >= dlen {
-                return Err(Error::BufferTooShort)
+                return Err(Error::DestTooShort)
             }
             dst[cp] = code;
             cp = d;
@@ -32,14 +34,14 @@ pub fn encode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
             code = 0x01;
         } else {
             if d >= dlen {
-                return Err(Error::BufferTooShort)
+                return Err(Error::DestTooShort)
             }
             dst[d] = src[p];
             d += 1;
             code += 1;
             if code == 0xff {
                 if cp >= dlen {
-                    return Err(Error::BufferTooShort)
+                    return Err(Error::DestTooShort)
                 }
                 dst[cp] = code;
                 cp = d;
@@ -50,7 +52,7 @@ pub fn encode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
         p += 1;
     }
     if cp >= dlen {
-        return Err(Error::BufferTooShort)
+        return Err(Error::DestTooShort)
     }    
     dst[cp] = code;
     Ok(d)
@@ -58,17 +60,60 @@ pub fn encode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
 
 /// Decodes a message from src into dst, returning the number of dst bytes used. The length of dst must be at least than src.len() - 1.
 pub fn decode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
+    println!("decode: {:?} {:?}", src, dst);    
+    let (mut s, mut d) = (0, 0);
+    let len = src.len();
+    let mut code;
+    let mut i;
+
+    if dst.len() + 1 < src.len() {
+        return Err(Error::DestTooShort)
+    }
+
+    while s < len {    
+        code = src[s] as usize;
+        if code == 0 {
+            return Err(Error::UnexpectedNull)
+        }
+        if s + code > len && code != 1 {
+            return Err(Error::SourceTooShort)
+        }
+        s += 1;
+        i = 1;
+        while i < code {
+            if src[s] == 0 {
+                return Err(Error::UnexpectedNull)
+            }
+            dst[d] = src[s];
+            d += 1;
+            s += 1;
+            i += 1;
+        }
+        if code != 0xFF && s != len {        
+            dst[d] = 0;
+            d += 1;
+        }
+    }
+    return Ok(d)
+}
+
+pub fn decode_old(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
     let mut p = 0;
     let mut d = 0;
     let slen = src.len();
     let dlen = dst.len();
     loop {
-        let code = src[p];        
+        let code = src[p];       
+        println!("code: {}", code) ;
         p += 1;
         let mut i = 1;
         while i < code {
+            println!("i: {}", i);
+            if p >= slen {
+                return Err(Error::SourceTooShort)
+            }
             if d >= dlen {
-                return Err(Error::BufferTooShort)
+                return Err(Error::DestTooShort)
             }
             dst[d] = src[p];
             d += 1;
@@ -79,8 +124,9 @@ pub fn decode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
             return Ok(d)
         }
         if code < 0xff {
+            println!("d >= dlen? {} {}", d, dlen);
             if d >= dlen {
-                return Err(Error::BufferTooShort)
+                return Err(Error::DestTooShort)
             }
             dst[d] = 0;
             d += 1;
@@ -118,7 +164,7 @@ impl<'a> Writer<'a> {
     pub fn encode_packet(&mut self, src: &[u8]) -> Result<usize, Error> {
         let n = encode(src, &mut self.buf[self.pos..])?;
         if self.pos + n + 1 > self.buf.len() {
-            return Err(Error::BufferTooShort)
+            return Err(Error::DestTooShort)
         }
         self.buf[self.pos + n] = 0x00;
         self.pos += n + 1;
@@ -163,27 +209,26 @@ impl<'a> Reader<'a> {
             self.tail = 0;
         }
     }
+
+    pub fn next_null(&mut self) -> Option<usize> {
+        for i in self.head..self.buf.len() {
+            if self.buf[i] == 0 {
+                return Some(i)
+            }
+        }
+        None
+    }
     
     // Returns the number of bytes used in dst
     pub fn decode_packet(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
-        // find terminator
-        let mut t = self.head;
-        while t < self.tail {
-            if self.buf[t] == 0 {
-                break
-            }
-            t += 1;
+        if let Some(next_null) = self.next_null() {
+            let buf = &mut self.buf[self.head..next_null+1];
+            println!("buf: {:?}", buf);
+            self.head = next_null + 1;
+            Ok(Some(decode(buf, dst)?))
+        } else {
+            Ok(None)
         }
-        if t == self.tail {
-            return Ok(None)
-        }
-        if t == self.head {
-            self.head = t + 1;
-            return Ok(Some(0))
-        }
-        let n = decode(&self.buf[self.head..t], dst)?;
-        self.head = t + 1;
-        Ok(Some(n))
     }
 }
 
@@ -238,31 +283,31 @@ mod tests {
     #[test]
     fn test_encode() {
         let mut dst = [0xffu8; 256];
-        assert_eq!(encode(&U1[..], &mut dst[..1]), Err(Error::BufferTooShort));
+        assert_eq!(encode(&U1[..], &mut dst[..1]), Err(Error::DestTooShort));
         assert_eq!(encode(&U1[..], &mut dst[..2]), Ok(2));
         assert_eq!(encode(&U1[..], &mut dst[..3]), Ok(2));
         assert_eq!(E1, &dst[..2]);
 
         let mut dst = [0xffu8; 256];
-        assert_eq!(encode(&U2[..], &mut dst[..2]), Err(Error::BufferTooShort));
+        assert_eq!(encode(&U2[..], &mut dst[..2]), Err(Error::DestTooShort));
         assert_eq!(encode(&U2[..], &mut dst[..3]), Ok(3));
         assert_eq!(encode(&U2[..], &mut dst[..4]), Ok(3));
         assert_eq!(E2, &dst[..3]);
 
         let mut dst = [0xffu8; 256];
-        assert_eq!(encode(&U3[..], &mut dst[..4]), Err(Error::BufferTooShort));
+        assert_eq!(encode(&U3[..], &mut dst[..4]), Err(Error::DestTooShort));
         assert_eq!(encode(&U3[..], &mut dst[..5]), Ok(5));
         assert_eq!(encode(&U3[..], &mut dst[..6]), Ok(5));
         assert_eq!(E3, &dst[..5]);
 
         let mut dst = [0xffu8; 256];
-        assert_eq!(encode(&U4[..], &mut dst[..4]), Err(Error::BufferTooShort));
+        assert_eq!(encode(&U4[..], &mut dst[..4]), Err(Error::DestTooShort));
         assert_eq!(encode(&U4[..], &mut dst[..5]), Ok(5));
         assert_eq!(encode(&U4[..], &mut dst[..6]), Ok(5));
         assert_eq!(E4, &dst[..5]);
 
         let mut dst = [0xffu8; 256];
-        assert_eq!(encode(&U5[..], &mut dst[..4]), Err(Error::BufferTooShort));
+        assert_eq!(encode(&U5[..], &mut dst[..4]), Err(Error::DestTooShort));
         assert_eq!(encode(&U5[..], &mut dst[..5]), Ok(5));
         assert_eq!(encode(&U5[..], &mut dst[..6]), Ok(5));
         assert_eq!(E5, &dst[..5]);
@@ -271,31 +316,31 @@ mod tests {
     #[test]
     fn test_decode() {
         let mut dst = [0xffu8; 255];
-        assert_eq!(decode(&E1[..], &mut dst[..0]), Err(Error::BufferTooShort));
+        assert_eq!(decode(&E1[..], &mut dst[..0]), Err(Error::DestTooShort));
         assert_eq!(decode(&E1[..], &mut dst[..1]), Ok(1));
         assert_eq!(decode(&E1[..], &mut dst[..2]), Ok(1));
         assert_eq!(U1, &dst[..1]);
 
         let mut dst = [0xffu8; 255];
-        assert_eq!(decode(&E2[..], &mut dst[..1]), Err(Error::BufferTooShort));
+        assert_eq!(decode(&E2[..], &mut dst[..1]), Err(Error::DestTooShort));
         assert_eq!(decode(&E2[..], &mut dst[..2]), Ok(2));
         assert_eq!(decode(&E2[..], &mut dst[..3]), Ok(2));
         assert_eq!(U2, &dst[..2]);
 
         let mut dst = [0xffu8; 255];
-        assert_eq!(decode(&E3[..], &mut dst[..3]), Err(Error::BufferTooShort));
+        assert_eq!(decode(&E3[..], &mut dst[..3]), Err(Error::DestTooShort));
         assert_eq!(decode(&E3[..], &mut dst[..4]), Ok(4));
         assert_eq!(decode(&E3[..], &mut dst[..5]), Ok(4));
         assert_eq!(U3, &dst[..4]);        
 
         let mut dst = [0xffu8; 255];
-        assert_eq!(decode(&E4[..], &mut dst[..3]), Err(Error::BufferTooShort));
+        assert_eq!(decode(&E4[..], &mut dst[..3]), Err(Error::DestTooShort));
         assert_eq!(decode(&E4[..], &mut dst[..4]), Ok(4));
         assert_eq!(decode(&E4[..], &mut dst[..5]), Ok(4));
         assert_eq!(U4, &dst[..4]);    
 
         let mut dst = [0xffu8; 255];
-        assert_eq!(decode(&E5[..], &mut dst[..3]), Err(Error::BufferTooShort));
+        assert_eq!(decode(&E5[..], &mut dst[..3]), Err(Error::DestTooShort));
         assert_eq!(decode(&E5[..], &mut dst[..4]), Ok(4));
         assert_eq!(decode(&E5[..], &mut dst[..5]), Ok(4));
         assert_eq!(U5, &dst[..4]);            
@@ -305,15 +350,15 @@ mod tests {
     fn test_encoder_len() {
         let mut enc_buf = [0u8; 0];        
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::DestTooShort));
 
         let mut enc_buf = [0u8; 1];
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::DestTooShort));
 
         let mut enc_buf = [0u8; 2];
         let mut encoder = Writer::new(&mut enc_buf);        
-        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::BufferTooShort));
+        assert_eq!(encoder.encode_packet(&U1[..]), Err(Error::DestTooShort));
 
         let mut enc_buf = [0u8; 3];
         let mut encoder = Writer::new(&mut enc_buf);        
@@ -390,5 +435,35 @@ mod tests {
         assert_eq!(decoder.decode_packet(&mut dst[..0]), Ok(None));
         assert_eq!(decoder.pos(), 27);
         assert_eq!(decoder.len(), 0);        
+    }
+
+    #[test]
+    fn test_reader_null() {
+        assert_eq!(Reader::new(&mut []).next_null(), None);
+        assert_eq!(Reader::new(&mut [0x00]).next_null(), Some(0));
+        assert_eq!(Reader::new(&mut [0x01, 0x00]).next_null(), Some(1));
+    }
+
+    #[test]
+    fn test_decode_short() {
+        let src = [0x03, 0x11, 0x00];
+        let mut dst = [0u8; 256];
+        assert_eq!(decode(&src, &mut dst), Err(Error::SourceTooShort));
+    }
+
+    #[test]
+    fn test_short_packets() {
+        let mut src = [0x03, 0x11, 0x00, 0x05, 0x11, 0x22, 0x33, 0x44, 0x00];
+        let mut dst = [0u8; 256];
+
+        //assert_eq!(decode(&mut dst, &mut src[..2]), Err(Error::DestTooShort));
+
+        let mut decoder = Reader::new(&mut src);
+        assert_eq!(decoder.decode_packet(&mut dst), Err(Error::SourceTooShort));
+        assert_eq!(decoder.decode_packet(&mut dst), Ok(Some(4)));
+        assert_eq!(&dst[..4], &U4);
+        assert_eq!(decoder.decode_packet(&mut dst), Ok(Some(0)));
+        assert_eq!(decoder.decode_packet(&mut dst), Ok(None));
+        //assert_eq!(decoder.pos(), 3);
     }
 }
