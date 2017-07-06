@@ -1,10 +1,13 @@
 #![no_std]
-
 //! Consistent Overhead Byte Stuffing
 //! Original Paper: http://www.stuartcheshire.org/papers/COBSforToN.pdf
 //! IETF Draft: https://tools.ietf.org/html/draft-ietf-pppext-cobs-00
 //! Wikipedia: https://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing
 //! See https://bitbucket.org/cmcqueen1975/cobs-c/wiki/Home
+
+mod buffer;
+pub use buffer::Buffer;
+
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -93,40 +96,6 @@ pub fn decode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
         }
     }
     return Ok(d)
-}
-
-pub fn decode_old(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
-    let mut p = 0;
-    let mut d = 0;
-    let slen = src.len();
-    let dlen = dst.len();
-    loop {
-        let code = src[p];       
-        p += 1;
-        let mut i = 1;
-        while i < code {
-            if p >= slen {
-                return Err(Error::SourceTooShort)
-            }
-            if d >= dlen {
-                return Err(Error::DestTooShort)
-            }
-            dst[d] = src[p];
-            d += 1;
-            p += 1;            
-            i += 1;
-        }
-        if p >= slen {
-            return Ok(d)
-        }
-        if code < 0xff {
-            if d >= dlen {
-                return Err(Error::DestTooShort)
-            }
-            dst[d] = 0;
-            d += 1;
-        }
-    }    
 }
 
 pub struct Writer<'a> {
