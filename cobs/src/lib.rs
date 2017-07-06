@@ -1,4 +1,4 @@
-//#![no_std]
+#![no_std]
 
 //! Consistent Overhead Byte Stuffing
 //! Original Paper: http://www.stuartcheshire.org/papers/COBSforToN.pdf
@@ -9,7 +9,6 @@
 #[derive(Debug, PartialEq)]
 pub enum Error {
     InvalidEncoding,
-    // DestTooShort,
     SourceTooShort,
     DestTooShort,
     UnexpectedNull,
@@ -60,7 +59,6 @@ pub fn encode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
 
 /// Decodes a message from src into dst, returning the number of dst bytes used. The length of dst must be at least than src.len() - 1.
 pub fn decode(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
-    println!("decode: {:?} {:?}", src, dst);    
     let (mut s, mut d) = (0, 0);
     let len = src.len();
     let mut code;
@@ -104,11 +102,9 @@ pub fn decode_old(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
     let dlen = dst.len();
     loop {
         let code = src[p];       
-        println!("code: {}", code) ;
         p += 1;
         let mut i = 1;
         while i < code {
-            println!("i: {}", i);
             if p >= slen {
                 return Err(Error::SourceTooShort)
             }
@@ -124,7 +120,6 @@ pub fn decode_old(src: &[u8], dst: &mut[u8]) -> Result<usize, Error> {
             return Ok(d)
         }
         if code < 0xff {
-            println!("d >= dlen? {} {}", d, dlen);
             if d >= dlen {
                 return Err(Error::DestTooShort)
             }
@@ -221,13 +216,11 @@ impl<'a> Reader<'a> {
     
     // Returns the number of bytes used in dst
     pub fn decode_packet(&mut self, dst: &mut [u8]) -> Result<Option<usize>, Error> {
-        println!("decode packet: {:?}, {} {} {}", self.buf, self.head, self.tail, self.buf.len());
         if self.head == self.tail {
             return Ok(None)
         }
         if let Some(next_null) = self.next_null() {
             let buf = &mut self.buf[self.head..next_null];
-            println!("buf: {:?}", buf);
             self.head = next_null + 1;
             Ok(Some(decode(buf, dst)?))
         } else {
@@ -440,7 +433,6 @@ mod tests {
         assert_eq!(decoder.pos(), 25);          
 
         let mut dst = [0xffu8; 255];        
-        println!("decoder: {:?} {} {}", decoder.buf, decoder.head, decoder.tail);
         assert_eq!(decoder.decode_packet(&mut dst[..0]), Ok(Some(0)));        
         assert_eq!(decoder.pos(), 27);
         assert_eq!(decoder.len(), 0);
