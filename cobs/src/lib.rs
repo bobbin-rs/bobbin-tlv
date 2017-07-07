@@ -473,7 +473,6 @@ mod tests {
     fn test_null_start() {
         let mut src = [0u8; 256];
         let mut dst = [0u8; 256];
-        let len = src.len();
         //assert_eq!(decode(&mut dst, &mut src[..2]), Err(Error::DestTooShort));
 
         let mut decoder = Reader::new(&mut src);
