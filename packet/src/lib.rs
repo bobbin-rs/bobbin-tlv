@@ -86,6 +86,8 @@ pub fn decode<'a>(src: &'a [u8]) -> Result<(u8, &'a [u8]), Error> {
     Ok((tag, &src[2..2 + len]))
 }
 
+// Test
+
 #[cfg(test)]
 mod tests {
     use super::*;
